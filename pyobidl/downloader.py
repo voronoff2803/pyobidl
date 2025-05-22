@@ -9,7 +9,7 @@ from .megacli import megafolder
 from .utils import req_file_size,get_file_size,get_url_file_name,slugify,createID,makeSafeFilename
 
 class Downloader(object):
-    def __init__(self,destpath=''):
+    def __init__(self,destpath='', mega_email=None, mega_password=None):
         self.filename = ''
         self.stoping = False
         self.destpath = destpath
@@ -21,6 +21,8 @@ class Downloader(object):
         self.url = ''
         self.progressfunc = None
         self.args = None
+        self.mega_email = mega_email
+        self.mega_password = mega_password
         
     def download_info(self,url='',proxies=None):
         infos = []
@@ -44,7 +46,11 @@ class Downloader(object):
         elif 'mega.nz' in url:
                 try:
                     mg = mega.Mega()
-                    mdl = mg.login()
+                    # Use credentials if provided, otherwise login anonymously
+                    if self.mega_email and self.mega_password:
+                        mdl = mg.login(self.mega_email, self.mega_password)
+                    else:
+                        mdl = mg.login()
                     try:
                         info = mdl.get_public_url_info(url)
                     except:
@@ -94,7 +100,11 @@ class Downloader(object):
         elif 'mega.nz' in url:
                 try:
                     mg = mega.Mega()
-                    mdl = mg.login()
+                    # Use credentials if provided, otherwise login anonymously
+                    if self.mega_email and self.mega_password:
+                        mdl = mg.login(self.mega_email, self.mega_password)
+                    else:
+                        mdl = mg.login()
                     try:
                         info = mdl.get_public_url_info(url)
                     except:
@@ -167,7 +177,7 @@ class Downloader(object):
         self.download_url(self.url,self.progressfunc,self.args)
 
 class AsyncDownloader(object):
-    def __init__(self,destpath=''):
+    def __init__(self,destpath='', mega_email=None, mega_password=None):
         self.filename = ''
         self.stoping = False
         self.destpath = destpath
@@ -179,6 +189,8 @@ class AsyncDownloader(object):
         self.url = ''
         self.progressfunc = None
         self.args = None
+        self.mega_email = mega_email
+        self.mega_password = mega_password
 
     async def download_url(self,url='',progressfunc=None,args=None,proxies=None):
         self.url = url
@@ -203,7 +215,11 @@ class AsyncDownloader(object):
         elif 'mega.nz' in url:
                 try:
                     mg = mega.Mega()
-                    mdl = mg.login()
+                    # Use credentials if provided, otherwise login anonymously
+                    if self.mega_email and self.mega_password:
+                        mdl = mg.login(self.mega_email, self.mega_password)
+                    else:
+                        mdl = mg.login()
                     try:
                         info = mdl.get_public_url_info(url)
                     except:
