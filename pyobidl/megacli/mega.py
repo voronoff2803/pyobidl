@@ -31,7 +31,7 @@ class Mega:
     def __init__(self, options=None):
         self.schema = 'https'
         self.domain = 'mega.co.nz'
-        self.timeout = 160  # max secs to wait for resp from api requests
+        self.timeout = 300  # Increased from 160 to 300 seconds
         self.sid = None
         self.sequence_num = random.randint(0, 0xFFFFFFFF)
         self.request_id = make_id(10)
@@ -153,7 +153,8 @@ class Mega:
             self.sid = base64_url_encode(sid[:43])
 
     @retry(retry=retry_if_exception_type(RuntimeError),
-           wait=wait_exponential(multiplier=2, min=2, max=60))
+           wait=wait_exponential(multiplier=2, min=2, max=60),
+           stop=lambda attempt, result: attempt >= 10)  # Maximum 10 retries
     def _api_request(self, data):
         params = {'id': self.sequence_num}
         self.sequence_num += 1
@@ -166,13 +167,19 @@ class Mega:
             data = [data]
 
         url = f'{self.schema}://g.api.{self.domain}/cs'
-        response = requests.post(
-            url,
-            params=params,
-            data=json.dumps(data),
-            timeout=self.timeout,
-        )
-        json_resp = json.loads(response.text)
+        try:
+            response = requests.post(
+                url,
+                params=params,
+                data=json.dumps(data),
+                timeout=self.timeout,
+            )
+            json_resp = json.loads(response.text)
+        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+            logger.error(f"Request error: {str(e)}")
+            msg = f'Request error: {str(e)}'
+            raise RuntimeError(msg)
+            
         try:
             if isinstance(json_resp, list):
                 int_resp = json_resp[0] if isinstance(json_resp[0],

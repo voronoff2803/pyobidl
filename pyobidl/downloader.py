@@ -45,12 +45,32 @@ class Downloader(object):
                 except:return None
         elif 'mega.nz' in url:
                 try:
-                    mg = mega.Mega()
-                    # Use credentials if provided, otherwise login anonymously
-                    if self.mega_email and self.mega_password:
-                        mdl = mg.login(self.mega_email, self.mega_password)
-                    else:
-                        mdl = mg.login()
+                    # Create Mega instance with options
+                    mg_options = {'timeout': 300}  # Increased timeout
+                    mg = mega.Mega(options=mg_options)
+                    
+                    # Try to login with max 3 attempts
+                    login_attempts = 0
+                    max_login_attempts = 3
+                    mdl = None
+                    
+                    while login_attempts < max_login_attempts and mdl is None:
+                        try:
+                            # Use credentials if provided, otherwise login anonymously
+                            if self.mega_email and self.mega_password:
+                                mdl = mg.login(self.mega_email, self.mega_password)
+                            else:
+                                mdl = mg.login()
+                        except Exception as login_ex:
+                            login_attempts += 1
+                            if login_attempts >= max_login_attempts:
+                                raise login_ex
+                            # Wait before retrying
+                            time.sleep(5)
+                    
+                    if mdl is None:
+                        return None
+                        
                     try:
                         info = mdl.get_public_url_info(url)
                     except:
@@ -99,12 +119,32 @@ class Downloader(object):
                 except:return None
         elif 'mega.nz' in url:
                 try:
-                    mg = mega.Mega()
-                    # Use credentials if provided, otherwise login anonymously
-                    if self.mega_email and self.mega_password:
-                        mdl = mg.login(self.mega_email, self.mega_password)
-                    else:
-                        mdl = mg.login()
+                    # Create Mega instance with options
+                    mg_options = {'timeout': 300}  # Increased timeout
+                    mg = mega.Mega(options=mg_options)
+                    
+                    # Try to login with max 3 attempts
+                    login_attempts = 0
+                    max_login_attempts = 3
+                    mdl = None
+                    
+                    while login_attempts < max_login_attempts and mdl is None:
+                        try:
+                            # Use credentials if provided, otherwise login anonymously
+                            if self.mega_email and self.mega_password:
+                                mdl = mg.login(self.mega_email, self.mega_password)
+                            else:
+                                mdl = mg.login()
+                        except Exception as login_ex:
+                            login_attempts += 1
+                            if login_attempts >= max_login_attempts:
+                                raise login_ex
+                            # Wait before retrying
+                            time.sleep(5)
+                    
+                    if mdl is None:
+                        return None
+                        
                     try:
                         info = mdl.get_public_url_info(url)
                     except:
@@ -214,12 +254,33 @@ class AsyncDownloader(object):
                 except:return None
         elif 'mega.nz' in url:
                 try:
-                    mg = mega.Mega()
-                    # Use credentials if provided, otherwise login anonymously
-                    if self.mega_email and self.mega_password:
-                        mdl = mg.login(self.mega_email, self.mega_password)
-                    else:
-                        mdl = mg.login()
+                    # Create Mega instance with options
+                    mg_options = {'timeout': 300}  # Increased timeout
+                    mg = mega.Mega(options=mg_options)
+                    
+                    # Try to login with max 3 attempts
+                    login_attempts = 0
+                    max_login_attempts = 3
+                    mdl = None
+                    
+                    while login_attempts < max_login_attempts and mdl is None:
+                        try:
+                            # Use credentials if provided, otherwise login anonymously
+                            if self.mega_email and self.mega_password:
+                                mdl = mg.login(self.mega_email, self.mega_password)
+                            else:
+                                mdl = mg.login()
+                        except Exception as login_ex:
+                            login_attempts += 1
+                            if login_attempts >= max_login_attempts:
+                                raise login_ex
+                            # Wait before retrying
+                            import asyncio
+                            await asyncio.sleep(5)
+                    
+                    if mdl is None:
+                        return None
+                        
                     try:
                         info = mdl.get_public_url_info(url)
                     except:
