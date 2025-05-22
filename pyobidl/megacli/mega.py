@@ -15,7 +15,7 @@ import tempfile
 import shutil
 
 import requests
-from tenacity import retry, wait_exponential, retry_if_exception_type
+from tenacity import retry, wait_exponential, retry_if_exception_type, stop_after_attempt
 
 from .errors import ValidationError, RequestError
 from .crypto import (a32_to_base64, encrypt_key, base64_url_encode,
@@ -181,7 +181,7 @@ class Mega:
 
     @retry(retry=retry_if_exception_type(RuntimeError),
            wait=wait_exponential(multiplier=2, min=2, max=60),
-           stop=lambda attempt, result: attempt >= 10)  # Maximum 10 retries
+           stop=stop_after_attempt(10))  # Maximum 10 retries
     def _api_request(self, data):
         params = {'id': self.sequence_num}
         self.sequence_num += 1
