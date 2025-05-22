@@ -24,6 +24,54 @@ class Downloader(object):
         self.mega_email = mega_email
         self.mega_password = mega_password
         self.proxies = proxies
+        # Cache for Mega session
+        self.mega_session = None
+        
+    def _get_mega_session(self):
+        """Get or create a Mega session"""
+        if self.mega_session is not None:
+            # Return existing session if we have one
+            return self.mega_session
+            
+        # Create Mega instance with options
+        mg_options = {
+            'timeout': 300,  # Increased timeout
+            'proxies': self.proxies  # Pass proxies to Mega
+        }
+        mg = mega.Mega(options=mg_options)
+        
+        # Try to login with max 5 attempts with exponential backoff
+        login_attempts = 0
+        max_login_attempts = 5
+        mdl = None
+        last_error = None
+        
+        while login_attempts < max_login_attempts and mdl is None:
+            try:
+                # Use credentials if provided, otherwise login anonymously
+                if self.mega_email and self.mega_password:
+                    mdl = mg.login(self.mega_email, self.mega_password)
+                else:
+                    mdl = mg.login()
+            except Exception as login_ex:
+                last_error = login_ex
+                login_attempts += 1
+                if login_attempts >= max_login_attempts:
+                    print(f"Failed to login after {max_login_attempts} attempts. Last error: {str(login_ex)}")
+                    raise login_ex
+                    
+                # Exponential backoff wait before retrying (2^attempt seconds)
+                wait_time = 2 ** login_attempts
+                print(f"Login attempt {login_attempts} failed. Retrying in {wait_time} seconds.")
+                time.sleep(wait_time)
+        
+        if mdl is None:
+            print(f"Failed to login to Mega. Error: {str(last_error)}")
+            return None
+            
+        # Cache the session for future use
+        self.mega_session = mdl
+        return mdl
         
     def download_info(self,url='',proxies=None):
         infos = []
@@ -48,46 +96,25 @@ class Downloader(object):
                 except:return None
         elif 'mega.nz' in url:
                 try:
-                    # Create Mega instance with options
-                    mg_options = {
-                        'timeout': 300,  # Increased timeout
-                        'proxies': setproxycu  # Pass proxies to Mega
-                    }
-                    mg = mega.Mega(options=mg_options)
-                    
-                    # Try to login with max 5 attempts with exponential backoff
-                    login_attempts = 0
-                    max_login_attempts = 5
-                    mdl = None
-                    last_error = None
-                    
-                    while login_attempts < max_login_attempts and mdl is None:
-                        try:
-                            # Use credentials if provided, otherwise login anonymously
-                            if self.mega_email and self.mega_password:
-                                mdl = mg.login(self.mega_email, self.mega_password)
-                            else:
-                                mdl = mg.login()
-                        except Exception as login_ex:
-                            last_error = login_ex
-                            login_attempts += 1
-                            if login_attempts >= max_login_attempts:
-                                print(f"Failed to login after {max_login_attempts} attempts. Last error: {str(login_ex)}")
-                                raise login_ex
-                                
-                            # Exponential backoff wait before retrying (2^attempt seconds)
-                            wait_time = 2 ** login_attempts
-                            print(f"Login attempt {login_attempts} failed. Retrying in {wait_time} seconds.")
-                            time.sleep(wait_time)
-                    
+                    # Get or create a Mega session
+                    mdl = self._get_mega_session()
                     if mdl is None:
-                        print(f"Failed to login to Mega. Error: {str(last_error)}")
                         return None
                         
                     try:
                         info = mdl.get_public_url_info(url)
-                    except:
-                        info = None
+                    except Exception as e:
+                        print(f"Error getting URL info: {str(e)}")
+                        # If session expired, clear it and try once more
+                        if "Not logged in" in str(e):
+                            self.mega_session = None
+                            mdl = self._get_mega_session()
+                            if mdl is None:
+                                return None
+                            info = mdl.get_public_url_info(url)
+                        else:
+                            info = None
+                            
                     if info:
                         fname = info['name']
                         fsize = info['size']
@@ -102,6 +129,7 @@ class Downloader(object):
                             fsize = fi['size']
                             infos.append({'fname':fname,'furl':url,'fsize':fsize})
                 except Exception as ex:
+                    print(f"Mega download_info error: {str(ex)}")
                     return None
         if req is None:
            req = requests.get(url,allow_redirects=True,stream=True,proxies=setproxycu)
@@ -134,46 +162,25 @@ class Downloader(object):
                 except:return None
         elif 'mega.nz' in url:
                 try:
-                    # Create Mega instance with options
-                    mg_options = {
-                        'timeout': 300,  # Increased timeout
-                        'proxies': setproxycu  # Pass proxies to Mega
-                    }
-                    mg = mega.Mega(options=mg_options)
-                    
-                    # Try to login with max 5 attempts with exponential backoff
-                    login_attempts = 0
-                    max_login_attempts = 5
-                    mdl = None
-                    last_error = None
-                    
-                    while login_attempts < max_login_attempts and mdl is None:
-                        try:
-                            # Use credentials if provided, otherwise login anonymously
-                            if self.mega_email and self.mega_password:
-                                mdl = mg.login(self.mega_email, self.mega_password)
-                            else:
-                                mdl = mg.login()
-                        except Exception as login_ex:
-                            last_error = login_ex
-                            login_attempts += 1
-                            if login_attempts >= max_login_attempts:
-                                print(f"Failed to login after {max_login_attempts} attempts. Last error: {str(login_ex)}")
-                                raise login_ex
-                                
-                            # Exponential backoff wait before retrying (2^attempt seconds)
-                            wait_time = 2 ** login_attempts
-                            print(f"Login attempt {login_attempts} failed. Retrying in {wait_time} seconds.")
-                            time.sleep(wait_time)
-                    
+                    # Get or create a Mega session
+                    mdl = self._get_mega_session()
                     if mdl is None:
-                        print(f"Failed to login to Mega. Error: {str(last_error)}")
                         return None
                         
                     try:
                         info = mdl.get_public_url_info(url)
-                    except:
-                        info = None
+                    except Exception as e:
+                        print(f"Error getting URL info: {str(e)}")
+                        # If session expired, clear it and try once more
+                        if "Not logged in" in str(e):
+                            self.mega_session = None
+                            mdl = self._get_mega_session()
+                            if mdl is None:
+                                return None
+                            info = mdl.get_public_url_info(url)
+                        else:
+                            info = None
+                            
                     if info:
                         output = mdl.download_url(url,dest_path=self.destpath,dest_filename=self.destpath+info['name'],progressfunc=progressfunc,args=args,self_in=self)
                         if not self.stoping:
@@ -194,6 +201,7 @@ class Downloader(object):
                             return files
                     return None
                 except Exception as ex:
+                    print(f"Mega download_url error: {str(ex)}")
                     return None
         if req is None:
            req = requests.get(url,allow_redirects=True,stream=True,proxies=setproxycu)
@@ -257,6 +265,55 @@ class AsyncDownloader(object):
         self.mega_email = mega_email
         self.mega_password = mega_password
         self.proxies = proxies
+        # Cache for Mega session
+        self.mega_session = None
+        
+    async def _get_mega_session(self):
+        """Get or create a Mega session"""
+        if self.mega_session is not None:
+            # Return existing session if we have one
+            return self.mega_session
+            
+        # Create Mega instance with options
+        mg_options = {
+            'timeout': 300,  # Increased timeout
+            'proxies': self.proxies  # Pass proxies to Mega
+        }
+        mg = mega.Mega(options=mg_options)
+        
+        # Try to login with max 5 attempts with exponential backoff
+        login_attempts = 0
+        max_login_attempts = 5
+        mdl = None
+        last_error = None
+        
+        while login_attempts < max_login_attempts and mdl is None:
+            try:
+                # Use credentials if provided, otherwise login anonymously
+                if self.mega_email and self.mega_password:
+                    mdl = mg.login(self.mega_email, self.mega_password)
+                else:
+                    mdl = mg.login()
+            except Exception as login_ex:
+                last_error = login_ex
+                login_attempts += 1
+                if login_attempts >= max_login_attempts:
+                    print(f"Failed to login after {max_login_attempts} attempts. Last error: {str(login_ex)}")
+                    raise login_ex
+                    
+                # Exponential backoff wait before retrying (2^attempt seconds)
+                wait_time = 2 ** login_attempts
+                print(f"Login attempt {login_attempts} failed. Retrying in {wait_time} seconds.")
+                import asyncio
+                await asyncio.sleep(wait_time)
+        
+        if mdl is None:
+            print(f"Failed to login to Mega. Error: {str(last_error)}")
+            return None
+            
+        # Cache the session for future use
+        self.mega_session = mdl
+        return mdl
 
     async def download_url(self,url='',progressfunc=None,args=None,proxies=None):
         self.url = url
@@ -282,47 +339,25 @@ class AsyncDownloader(object):
                 except:return None
         elif 'mega.nz' in url:
                 try:
-                    # Create Mega instance with options
-                    mg_options = {
-                        'timeout': 300,  # Increased timeout
-                        'proxies': setproxycu  # Pass proxies to Mega
-                    }
-                    mg = mega.Mega(options=mg_options)
-                    
-                    # Try to login with max 5 attempts with exponential backoff
-                    login_attempts = 0
-                    max_login_attempts = 5
-                    mdl = None
-                    last_error = None
-                    
-                    while login_attempts < max_login_attempts and mdl is None:
-                        try:
-                            # Use credentials if provided, otherwise login anonymously
-                            if self.mega_email and self.mega_password:
-                                mdl = mg.login(self.mega_email, self.mega_password)
-                            else:
-                                mdl = mg.login()
-                        except Exception as login_ex:
-                            last_error = login_ex
-                            login_attempts += 1
-                            if login_attempts >= max_login_attempts:
-                                print(f"Failed to login after {max_login_attempts} attempts. Last error: {str(login_ex)}")
-                                raise login_ex
-                                
-                            # Exponential backoff wait before retrying (2^attempt seconds)
-                            wait_time = 2 ** login_attempts
-                            print(f"Login attempt {login_attempts} failed. Retrying in {wait_time} seconds.")
-                            import asyncio
-                            await asyncio.sleep(wait_time)
-                    
+                    # Get or create a Mega session
+                    mdl = await self._get_mega_session()
                     if mdl is None:
-                        print(f"Failed to login to Mega. Error: {str(last_error)}")
                         return None
                         
                     try:
                         info = mdl.get_public_url_info(url)
-                    except:
-                        info = None
+                    except Exception as e:
+                        print(f"Error getting URL info: {str(e)}")
+                        # If session expired, clear it and try once more
+                        if "Not logged in" in str(e):
+                            self.mega_session = None
+                            mdl = await self._get_mega_session()
+                            if mdl is None:
+                                return None
+                            info = mdl.get_public_url_info(url)
+                        else:
+                            info = None
+                            
                     if info:
                         output = await mdl.async_download_url(url,dest_path=self.destpath,dest_filename=self.destpath+info['name'],progressfunc=progressfunc,args=args,self_in=self)
                         if not self.stoping:
@@ -344,6 +379,7 @@ class AsyncDownloader(object):
                             return files
                     return None
                 except Exception as ex:
+                    print(f"Mega download_url error: {str(ex)}")
                     return None
         if req is None:
            req = requests.get(url,allow_redirects=True,stream=True,proxies=setproxycu)
