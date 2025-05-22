@@ -56,27 +56,54 @@ class Mega:
     def _login_user(self, email, password):
         logger.info('Logging in user...')
         email = email.lower()
-        get_user_salt_resp = self._api_request({'a': 'us0', 'user': email})
-        user_salt = None
+        
         try:
-            user_salt = base64_to_a32(get_user_salt_resp['s'])
-        except KeyError:
-            # v1 user account
-            password_aes = prepare_key(str_to_a32(password))
-            user_hash = stringhash(email, password_aes)
-        else:
-            # v2 user account
-            pbkdf2_key = hashlib.pbkdf2_hmac(hash_name='sha512',
-                                             password=password.encode(),
-                                             salt=a32_to_str(user_salt),
-                                             iterations=100000,
-                                             dklen=32)
-            password_aes = str_to_a32(pbkdf2_key[:16])
-            user_hash = base64_url_encode(pbkdf2_key[-16:])
-        resp = self._api_request({'a': 'us', 'user': email, 'uh': user_hash})
-        if isinstance(resp, int):
-            raise RequestError(resp)
-        self._login_process(resp, password_aes)
+            # Step 1: Get the user salt (first API call)
+            get_user_salt_resp = self._api_request({'a': 'us0', 'user': email})
+            user_salt = None
+            
+            try:
+                user_salt = base64_to_a32(get_user_salt_resp['s'])
+            except KeyError:
+                # v1 user account
+                logger.info('Using v1 account authentication')
+                password_aes = prepare_key(str_to_a32(password))
+                user_hash = stringhash(email, password_aes)
+            else:
+                # v2 user account
+                logger.info('Using v2 account authentication')
+                pbkdf2_key = hashlib.pbkdf2_hmac(hash_name='sha512',
+                                                password=password.encode(),
+                                                salt=a32_to_str(user_salt),
+                                                iterations=100000,
+                                                dklen=32)
+                password_aes = str_to_a32(pbkdf2_key[:16])
+                user_hash = base64_url_encode(pbkdf2_key[-16:])
+            
+            # Step 2: Authenticate with user hash (second API call)
+            resp = self._api_request({'a': 'us', 'user': email, 'uh': user_hash})
+            
+            if isinstance(resp, int):
+                # Handle error codes specifically
+                if resp == -9:
+                    logger.error("Invalid credentials (email or password incorrect)")
+                    raise RequestError("Invalid credentials")
+                elif resp == -11:
+                    logger.error("Rate limit exceeded")
+                    raise RequestError("Rate limit exceeded - wait before trying again")
+                elif resp == -16:
+                    logger.error("Account blocked/suspended")
+                    raise RequestError("Account suspended")
+                else:
+                    logger.error(f"Login error code: {resp}")
+                    raise RequestError(resp)
+                    
+            # Process the successful login
+            self._login_process(resp, password_aes)
+            
+        except Exception as e:
+            logger.error(f"Login error: {str(e)}")
+            raise
 
     def login_anonymous(self):
         logger.info('Logging in anonymous temporary user...')

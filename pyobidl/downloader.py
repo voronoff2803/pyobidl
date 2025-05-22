@@ -49,10 +49,11 @@ class Downloader(object):
                     mg_options = {'timeout': 300}  # Increased timeout
                     mg = mega.Mega(options=mg_options)
                     
-                    # Try to login with max 3 attempts
+                    # Try to login with max 5 attempts with exponential backoff
                     login_attempts = 0
-                    max_login_attempts = 3
+                    max_login_attempts = 5
                     mdl = None
+                    last_error = None
                     
                     while login_attempts < max_login_attempts and mdl is None:
                         try:
@@ -62,13 +63,19 @@ class Downloader(object):
                             else:
                                 mdl = mg.login()
                         except Exception as login_ex:
+                            last_error = login_ex
                             login_attempts += 1
                             if login_attempts >= max_login_attempts:
+                                print(f"Failed to login after {max_login_attempts} attempts. Last error: {str(login_ex)}")
                                 raise login_ex
-                            # Wait before retrying
-                            time.sleep(5)
+                                
+                            # Exponential backoff wait before retrying (2^attempt seconds)
+                            wait_time = 2 ** login_attempts
+                            print(f"Login attempt {login_attempts} failed. Retrying in {wait_time} seconds.")
+                            time.sleep(wait_time)
                     
                     if mdl is None:
+                        print(f"Failed to login to Mega. Error: {str(last_error)}")
                         return None
                         
                     try:
@@ -123,10 +130,11 @@ class Downloader(object):
                     mg_options = {'timeout': 300}  # Increased timeout
                     mg = mega.Mega(options=mg_options)
                     
-                    # Try to login with max 3 attempts
+                    # Try to login with max 5 attempts with exponential backoff
                     login_attempts = 0
-                    max_login_attempts = 3
+                    max_login_attempts = 5
                     mdl = None
+                    last_error = None
                     
                     while login_attempts < max_login_attempts and mdl is None:
                         try:
@@ -136,13 +144,19 @@ class Downloader(object):
                             else:
                                 mdl = mg.login()
                         except Exception as login_ex:
+                            last_error = login_ex
                             login_attempts += 1
                             if login_attempts >= max_login_attempts:
+                                print(f"Failed to login after {max_login_attempts} attempts. Last error: {str(login_ex)}")
                                 raise login_ex
-                            # Wait before retrying
-                            time.sleep(5)
+                                
+                            # Exponential backoff wait before retrying (2^attempt seconds)
+                            wait_time = 2 ** login_attempts
+                            print(f"Login attempt {login_attempts} failed. Retrying in {wait_time} seconds.")
+                            time.sleep(wait_time)
                     
                     if mdl is None:
+                        print(f"Failed to login to Mega. Error: {str(last_error)}")
                         return None
                         
                     try:
@@ -258,10 +272,11 @@ class AsyncDownloader(object):
                     mg_options = {'timeout': 300}  # Increased timeout
                     mg = mega.Mega(options=mg_options)
                     
-                    # Try to login with max 3 attempts
+                    # Try to login with max 5 attempts with exponential backoff
                     login_attempts = 0
-                    max_login_attempts = 3
+                    max_login_attempts = 5
                     mdl = None
+                    last_error = None
                     
                     while login_attempts < max_login_attempts and mdl is None:
                         try:
@@ -271,14 +286,20 @@ class AsyncDownloader(object):
                             else:
                                 mdl = mg.login()
                         except Exception as login_ex:
+                            last_error = login_ex
                             login_attempts += 1
                             if login_attempts >= max_login_attempts:
+                                print(f"Failed to login after {max_login_attempts} attempts. Last error: {str(login_ex)}")
                                 raise login_ex
-                            # Wait before retrying
+                                
+                            # Exponential backoff wait before retrying (2^attempt seconds)
+                            wait_time = 2 ** login_attempts
+                            print(f"Login attempt {login_attempts} failed. Retrying in {wait_time} seconds.")
                             import asyncio
-                            await asyncio.sleep(5)
+                            await asyncio.sleep(wait_time)
                     
                     if mdl is None:
+                        print(f"Failed to login to Mega. Error: {str(last_error)}")
                         return None
                         
                     try:
