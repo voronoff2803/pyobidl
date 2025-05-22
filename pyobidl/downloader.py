@@ -9,7 +9,7 @@ from .megacli import megafolder
 from .utils import req_file_size,get_file_size,get_url_file_name,slugify,createID,makeSafeFilename
 
 class Downloader(object):
-    def __init__(self,destpath='', mega_email=None, mega_password=None):
+    def __init__(self,destpath='', mega_email=None, mega_password=None, proxies=None):
         self.filename = ''
         self.stoping = False
         self.destpath = destpath
@@ -23,6 +23,7 @@ class Downloader(object):
         self.args = None
         self.mega_email = mega_email
         self.mega_password = mega_password
+        self.proxies = proxies
         
     def download_info(self,url='',proxies=None):
         infos = []
@@ -31,6 +32,8 @@ class Downloader(object):
         setproxycu = None
         if proxies:
             setproxycu = proxies
+        elif self.proxies:
+            setproxycu = self.proxies
         if '.cu' not in url:
             setproxycu = None
         if 'mediafire' in url:
@@ -46,7 +49,10 @@ class Downloader(object):
         elif 'mega.nz' in url:
                 try:
                     # Create Mega instance with options
-                    mg_options = {'timeout': 300}  # Increased timeout
+                    mg_options = {
+                        'timeout': 300,  # Increased timeout
+                        'proxies': setproxycu  # Pass proxies to Mega
+                    }
                     mg = mega.Mega(options=mg_options)
                     
                     # Try to login with max 5 attempts with exponential backoff
@@ -112,6 +118,8 @@ class Downloader(object):
         setproxycu = None
         if proxies:
             setproxycu = proxies
+        elif self.proxies:
+            setproxycu = self.proxies
         if '.cu' not in url:
             setproxycu = None
         if 'mediafire' in url:
@@ -127,7 +135,10 @@ class Downloader(object):
         elif 'mega.nz' in url:
                 try:
                     # Create Mega instance with options
-                    mg_options = {'timeout': 300}  # Increased timeout
+                    mg_options = {
+                        'timeout': 300,  # Increased timeout
+                        'proxies': setproxycu  # Pass proxies to Mega
+                    }
                     mg = mega.Mega(options=mg_options)
                     
                     # Try to login with max 5 attempts with exponential backoff
@@ -231,7 +242,7 @@ class Downloader(object):
         self.download_url(self.url,self.progressfunc,self.args)
 
 class AsyncDownloader(object):
-    def __init__(self,destpath='', mega_email=None, mega_password=None):
+    def __init__(self,destpath='', mega_email=None, mega_password=None, proxies=None):
         self.filename = ''
         self.stoping = False
         self.destpath = destpath
@@ -245,6 +256,7 @@ class AsyncDownloader(object):
         self.args = None
         self.mega_email = mega_email
         self.mega_password = mega_password
+        self.proxies = proxies
 
     async def download_url(self,url='',progressfunc=None,args=None,proxies=None):
         self.url = url
@@ -254,6 +266,8 @@ class AsyncDownloader(object):
         setproxycu = None
         if proxies:
             setproxycu = proxies
+        elif self.proxies:
+            setproxycu = self.proxies
         if '.cu' not in url:
             setproxycu = None
         if 'mediafire' in url:
@@ -269,7 +283,10 @@ class AsyncDownloader(object):
         elif 'mega.nz' in url:
                 try:
                     # Create Mega instance with options
-                    mg_options = {'timeout': 300}  # Increased timeout
+                    mg_options = {
+                        'timeout': 300,  # Increased timeout
+                        'proxies': setproxycu  # Pass proxies to Mega
+                    }
                     mg = mega.Mega(options=mg_options)
                     
                     # Try to login with max 5 attempts with exponential backoff

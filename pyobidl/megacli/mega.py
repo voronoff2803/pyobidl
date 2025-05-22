@@ -37,10 +37,15 @@ class Mega:
         self.request_id = make_id(10)
         self._trash_folder_node_id = None
         self.stoping = False
+        self.proxies = None
 
         if options is None:
             options = {}
         self.options = options
+        
+        # Set proxies if provided in options
+        if 'proxies' in options:
+            self.proxies = options['proxies']
 
     def stop(self):self.stoping = True
 
@@ -200,6 +205,7 @@ class Mega:
                 params=params,
                 data=json.dumps(data),
                 timeout=self.timeout,
+                proxies=self.proxies
             )
             json_resp = json.loads(response.text)
         except (requests.exceptions.RequestException, json.JSONDecodeError) as e:

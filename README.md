@@ -2,13 +2,14 @@
 Python 3 library for downloading (googledrive,mega,mediafire,directurl)
 # Description
 Pyobidl is a fast library for downloading (googledrive,mega,mediafire,directurl) using requests,mega.py
-# Features v1.1.0
+# Features v1.1.5
 - Asyncs methods
 - Suport Mega Files and Folders Urls
 - Suport Mediafire File Urls
 - Suport Google Drive Files Urls
 - Suport Direct Files Urls
 - Suport Mega authenticated login
+- Support for proxies/VPN for accessing blocked services
 # Quickstart & Installation
 Pyobidl requires an installation of Python 3.6 or greater, as well as pip. (Pip is typically bundled with Python 
 To install from the source with pip:
@@ -38,6 +39,25 @@ def progress(dl:Downloader,filename:str,index:int,total:int,speed:int,time:int,a
 
 # Initialize with Mega credentials
 dl = Downloader(destpath='', mega_email='your_email@example.com', mega_password='your_password')
+ouptut = dl.download_url(url='https://mega.nz/#F!IlxWwQJY!ZkcrapwfMxOjhhGXn5jEqQ',progressfunc=progress)
+```
+- Using pyobidl with proxies (for accessing Mega when blocked)
+```
+from pyobidl.downloader import Downloader
+from pyobidl.utils import sizeof_fmt
+
+def progress(dl:Downloader,filename:str,index:int,total:int,speed:int,time:int,args:tuple=None):
+    print(f'{filename} {sizeof_fmt(index)}/{sizeof_fmt(total)} ({sizeof_fmt(speed)})',end='\r')
+    pass
+
+# Configure proxies
+proxies = {
+    'http': 'http://your-proxy-server:port',
+    'https': 'http://your-proxy-server:port'
+}
+
+# Initialize with proxies
+dl = Downloader(destpath='', proxies=proxies)
 ouptut = dl.download_url(url='https://mega.nz/#F!IlxWwQJY!ZkcrapwfMxOjhhGXn5jEqQ',progressfunc=progress)
 ```
 - Using async pyobidl in a Python script
