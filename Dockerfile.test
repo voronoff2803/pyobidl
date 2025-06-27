@@ -1,0 +1,28 @@
+FROM python:3.11-bookworm
+
+# Test basic system setup
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends megatools && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Test basic Python packages
+RUN pip install requests beautifulsoup4 user-agent pycryptodome tenacity
+
+# Create a test script
+RUN echo '#!/usr/bin/env python3' > /test.py && \
+    echo 'import shutil' >> /test.py && \
+    echo 'import sys' >> /test.py && \
+    echo 'print("🐳 Docker Test Results:")' >> /test.py && \
+    echo 'print("Python version:", sys.version.split()[0])' >> /test.py && \
+    echo 'print("megatools available:", "✅ YES" if shutil.which("megadl") else "❌ NO")' >> /test.py && \
+    echo 'try:' >> /test.py && \
+    echo '    import requests, beautifulsoup4, user_agent, Crypto, tenacity' >> /test.py && \
+    echo '    print("Required packages: ✅ Available")' >> /test.py && \
+    echo 'except ImportError as e:' >> /test.py && \
+    echo '    print("Required packages: ❌ Missing -", str(e))' >> /test.py && \
+    echo 'print("🎉 Test completed!")' >> /test.py
+
+RUN chmod +x /test.py
+
+CMD ["python", "/test.py"] 

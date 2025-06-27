@@ -1,0 +1,67 @@
+# Use Python 3.11 on Debian Bookworm as base image
+FROM python:3.11-bookworm
+
+# Set environment variables
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# Create config directory
+RUN mkdir /config
+
+# Copy requirements file
+COPY requirements.txt /config/requirements.txt
+
+# Install system dependencies including unrar from non-free repository
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gnupg2 ca-certificates wget curl git && \
+    echo "deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://deb.debian.org/debian bookworm main contrib non-free" > /etc/apt/sources.list.d/non-free.list && \
+    apt-get update && \
+    apt-get install -y unrar && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# CRITICAL: Install megatools for mega.nz downloads (required for recreated mega module)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends megatools && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Optional: Install media tools for universal downloader support
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        youtube-dl \
+        ffmpeg \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+RUN pip install setuptools wheel
+RUN pip install -r /config/requirements.txt
+RUN pip install --upgrade rarfile
+
+# Install additional dependencies for pyobidl universal downloader
+RUN pip install --upgrade \
+    beautifulsoup4 \
+    user-agent \
+    pycryptodome
+
+# Create source directory
+RUN mkdir /src
+
+# Copy source code
+COPY src /src
+
+# Set working directory
+WORKDIR /src
+
+# Optional: Add a health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import pyobidl; print('PyObidl loaded successfully')" || exit 1
+
+# Default command (you should override this in your docker-compose.yml)
+CMD ["python", "main.py"] 

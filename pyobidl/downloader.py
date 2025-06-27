@@ -3,22 +3,229 @@
 Universal File Downloader
 
 This script downloads files from various platforms including Mega.nz, YouTube, MediaFire, and Google Drive.
-Usage: python downloader.py [url] [output_directory]
+Includes backward-compatible Downloader class and new UniversalDownloader.
 """
 
 import os
 import sys
 import argparse
 import logging
+import time
 from pathlib import Path
 
 from .megacli.mega import Mega
 from .youtube import YoutubeDownloader
 from .mediafire import MediaFireDownloader
 from .googledrive import GoogleDriveDownloader
-from .utils import setup_logging
+from .utils import setup_logging, ensure_dir_exists, get_url_file_name, makeSafeFilename, createID
 
 logger = logging.getLogger(__name__)
+
+
+class Downloader:
+    """
+    Backward-compatible Downloader class using new recreated mega module
+    
+    This maintains the old interface while using the improved backend.
+    """
+    def __init__(self, destpath='', mega_email=None, mega_password=None, proxies=None):
+        self.filename = ''
+        self.stoping = False
+        self.destpath = destpath
+        if self.destpath != '':
+            ensure_dir_exists(self.destpath)
+        self.id = createID(12)
+        self.url = ''
+        self.progressfunc = None
+        self.args = None
+        self.mega_email = mega_email
+        self.mega_password = mega_password
+        self.proxies = proxies
+        
+        # Initialize new downloaders
+        self.mega = Mega()
+        self.youtube = YoutubeDownloader()
+        self.mediafire = MediaFireDownloader()
+        self.googledrive = GoogleDriveDownloader()
+        
+    def detect_platform(self, url):
+        """Detect which platform the URL belongs to"""
+        url = url.lower().strip()
+        
+        if 'mega.nz' in url or 'mega.co.nz' in url:
+            return 'mega'
+        elif 'youtube.com' in url or 'youtu.be' in url:
+            return 'youtube'
+        elif 'mediafire.com' in url:
+            return 'mediafire'
+        elif 'drive.google.com' in url or 'docs.google.com' in url:
+            return 'googledrive'
+        else:
+            return 'unknown'
+    
+    def download_info(self, url='', proxies=None):
+        """
+        Get download information for a URL
+        
+        Args:
+            url (str): URL to analyze
+            proxies: Proxy settings (ignored, for compatibility)
+            
+        Returns:
+            list: List of file information dictionaries
+        """
+        infos = []
+        self.url = url
+        
+        platform = self.detect_platform(url)
+        
+        if platform == 'mega':
+            try:
+                # Use new mega module for URL parsing
+                file_id, decryption_key = self.mega.parse_mega_url(url)
+                if file_id and decryption_key:
+                    # Try to get basic info
+                    infos.append({
+                        'fname': f'mega_file_{file_id}',
+                        'furl': url,
+                        'fsize': 0,  # Size unknown without download
+                        'platform': 'mega'
+                    })
+                else:
+                    logger.error("Invalid Mega URL format")
+                    return None
+            except Exception as e:
+                logger.error(f"Mega download_info error: {str(e)}")
+                return None
+                
+        elif platform in ['mediafire', 'googledrive', 'youtube']:
+            # For other platforms, return basic info
+            infos.append({
+                'fname': f'{platform}_file',
+                'furl': url,
+                'fsize': 0,
+                'platform': platform
+            })
+        else:
+            logger.error(f"Unsupported platform for URL: {url}")
+            return None
+            
+        return infos
+    
+    def download_url(self, url='', progressfunc=None, args=None, proxies=None):
+        """
+        Download file from URL using new recreated mega module
+        
+        Args:
+            url (str): URL to download
+            progressfunc: Progress callback function (for compatibility)
+            args: Additional arguments (for compatibility)
+            proxies: Proxy settings (for compatibility)
+            
+        Returns:
+            str: Path to downloaded file if successful, None if failed
+        """
+        self.url = url
+        self.progressfunc = progressfunc
+        self.args = args
+        
+        if self.stoping:
+            return None
+            
+        platform = self.detect_platform(url)
+        
+        try:
+            if platform == 'mega':
+                return self._download_mega(url)
+            elif platform == 'mediafire':
+                return self._download_mediafire(url)
+            elif platform == 'googledrive':
+                return self._download_googledrive(url)
+            elif platform == 'youtube':
+                return self._download_youtube(url)
+            else:
+                logger.error(f"Unsupported platform: {platform}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Download error: {str(e)}")
+            return None
+    
+    def _download_mega(self, url):
+        """Download from Mega using new recreated module"""
+        try:
+            # Use the new simple download method
+            success = self.mega.simple_download(url, self.destpath)
+            
+            if success and not self.stoping:
+                # Find the downloaded file
+                if os.path.exists(self.destpath):
+                    files = [f for f in os.listdir(self.destpath) 
+                           if os.path.isfile(os.path.join(self.destpath, f))]
+                    if files:
+                        # Return the most recently modified file
+                        latest_file = max(files, key=lambda f: os.path.getmtime(os.path.join(self.destpath, f)))
+                        return os.path.join(self.destpath, latest_file)
+                        
+            return None
+            
+        except Exception as e:
+            logger.error(f"Mega download error: {str(e)}")
+            return None
+    
+    def _download_mediafire(self, url):
+        """Download from MediaFire"""
+        try:
+            success = self.mediafire.download(url, self.destpath)
+            if success and not self.stoping:
+                return self._get_latest_file()
+            return None
+        except Exception as e:
+            logger.error(f"MediaFire download error: {str(e)}")
+            return None
+    
+    def _download_googledrive(self, url):
+        """Download from Google Drive"""
+        try:
+            success = self.googledrive.download(url, self.destpath)
+            if success and not self.stoping:
+                return self._get_latest_file()
+            return None
+        except Exception as e:
+            logger.error(f"Google Drive download error: {str(e)}")
+            return None
+    
+    def _download_youtube(self, url):
+        """Download from YouTube"""
+        try:
+            success = self.youtube.download(url, self.destpath)
+            if success and not self.stoping:
+                return self._get_latest_file()
+            return None
+        except Exception as e:
+            logger.error(f"YouTube download error: {str(e)}")
+            return None
+    
+    def _get_latest_file(self):
+        """Get the most recently created file in destpath"""
+        try:
+            if os.path.exists(self.destpath):
+                files = [f for f in os.listdir(self.destpath) 
+                       if os.path.isfile(os.path.join(self.destpath, f))]
+                if files:
+                    latest_file = max(files, key=lambda f: os.path.getmtime(os.path.join(self.destpath, f)))
+                    return os.path.join(self.destpath, latest_file)
+            return None
+        except Exception:
+            return None
+    
+    def stop(self):
+        """Stop the downloader"""
+        self.stoping = True
+    
+    def renove(self):
+        """Retry download (legacy method name)"""
+        return self.download_url(self.url, self.progressfunc, self.args)
 
 
 class UniversalDownloader:

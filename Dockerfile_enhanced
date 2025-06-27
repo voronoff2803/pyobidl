@@ -1,0 +1,50 @@
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+RUN mkdir /config
+
+COPY requirements.txt /config/requirements.txt
+
+# Install necessary tools including unrar from non-free repository and additional tools for pyobidl
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gnupg2 ca-certificates wget curl git && \
+    echo "deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://deb.debian.org/debian bookworm main contrib non-free" > /etc/apt/sources.list.d/non-free.list && \
+    apt-get update && \
+    apt-get install -y unrar && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install megatools for mega.nz downloads (CRITICAL for recreated mega module)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends megatools && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install youtube-dl and other media tools for universal downloader support
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        youtube-dl \
+        ffmpeg \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install setuptools wheel
+RUN pip install -r /config/requirements.txt
+RUN pip install --upgrade rarfile
+
+# Install additional dependencies for pyobidl universal downloader
+RUN pip install --upgrade \
+    beautifulsoup4 \
+    user-agent \
+    pycryptodome
+
+RUN mkdir /src
+
+COPY src /src
+
+WORKDIR /src 
