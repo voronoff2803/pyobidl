@@ -94,16 +94,48 @@ class Mega:
                 logger.error("megatools (megadl) not found")
                 return False
                 
-            # Change to output directory
+            # Get absolute paths for debugging
             original_dir = os.getcwd()
-            os.chdir(output_dir)
+            abs_output_dir = os.path.abspath(output_dir)
+            
+            logger.info(f"🔍 download_with_megatools: Original dir: {original_dir}")
+            logger.info(f"🔍 download_with_megatools: Output dir: {output_dir}")
+            logger.info(f"🔍 download_with_megatools: Absolute output dir: {abs_output_dir}")
+            
+            # List files before download
+            files_before = []
+            if os.path.exists(abs_output_dir):
+                files_before = os.listdir(abs_output_dir)
+                logger.info(f"🔍 download_with_megatools: Files in output dir before: {files_before}")
+            
+            # Change to output directory
+            logger.info(f"🔍 download_with_megatools: Changing to output directory...")
+            os.chdir(abs_output_dir)
+            current_dir_after_change = os.getcwd()
+            logger.info(f"🔍 download_with_megatools: Current dir after change: {current_dir_after_change}")
             
             # Run megadl command
-            logger.info("Starting download with megatools...")
+            logger.info(f"🔍 download_with_megatools: Running: megadl {url}")
             result = subprocess.run(['megadl', url], capture_output=True, text=True)
             
+            logger.info(f"🔍 download_with_megatools: Return code: {result.returncode}")
+            logger.info(f"🔍 download_with_megatools: stdout: {result.stdout}")
+            logger.info(f"🔍 download_with_megatools: stderr: {result.stderr}")
+            
+            # List files after download (while still in output dir)
+            files_after = os.listdir('.')
+            logger.info(f"🔍 download_with_megatools: Files in current dir after download: {files_after}")
+            
             # Change back to original directory
+            logger.info(f"🔍 download_with_megatools: Changing back to original directory...")
             os.chdir(original_dir)
+            current_dir_after_return = os.getcwd()
+            logger.info(f"🔍 download_with_megatools: Current dir after return: {current_dir_after_return}")
+            
+            # List files in output dir from original location
+            if os.path.exists(abs_output_dir):
+                files_final = os.listdir(abs_output_dir)
+                logger.info(f"🔍 download_with_megatools: Files in output dir from original location: {files_final}")
             
             if result.returncode == 0:
                 logger.info("✅ Download completed successfully using megatools!")
@@ -114,6 +146,12 @@ class Mega:
                 
         except Exception as e:
             logger.error(f"❌ megatools error: {e}")
+            logger.error(f"🔍 download_with_megatools: Exception details: {type(e).__name__}: {str(e)}")
+            # Make sure we return to original directory even on error
+            try:
+                os.chdir(original_dir)
+            except:
+                pass
             return False
 
     def install_megatools_macos(self):
