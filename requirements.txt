@@ -2,5 +2,7 @@ requests
 requests[socks]
 requests_toolbelt
 user_agent
-mega
-mega.py
+tenacity>=8.0.0
+pycryptodome
+beautifulsoup4
+youtube-dl

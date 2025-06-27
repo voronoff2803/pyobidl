@@ -13,6 +13,8 @@ import random
 import binascii
 import tempfile
 import shutil
+import subprocess
+import sys
 
 import requests
 from tenacity import retry, wait_exponential, retry_if_exception_type, stop_after_attempt
@@ -47,7 +49,158 @@ class Mega:
         if 'proxies' in options:
             self.proxies = options['proxies']
 
-    def stop(self):self.stoping = True
+    def stop(self):
+        self.stoping = True
+
+    def parse_mega_url(self, url):
+        """
+        Parse Mega.nz URL to extract file ID and decryption key
+        
+        Args:
+            url (str): Mega.nz URL in format https://mega.nz/file/[file_id]#[decryption_key]
+        
+        Returns:
+            tuple: (file_id, decryption_key) or (None, None) if invalid
+        """
+        try:
+            # Remove any extra characters or spaces
+            url = url.strip()
+            
+            # Check if it's a valid Mega URL
+            if not url.startswith('https://mega.nz/file/'):
+                return None, None
+            
+            # Extract the part after /file/
+            file_part = url.split('/file/', 1)[1]
+            
+            # Split by # to get file_id and decryption_key
+            if '#' in file_part:
+                file_id, decryption_key = file_part.split('#', 1)
+                return file_id, decryption_key
+            else:
+                return None, None
+                
+        except Exception as e:
+            logger.error(f"Error parsing URL: {e}")
+            return None, None
+
+    def download_with_megatools(self, url, output_dir):
+        """
+        Download using megatools (megadl command)
+        """
+        try:
+            # Check if megatools is available
+            if not shutil.which('megadl'):
+                logger.error("megatools (megadl) not found")
+                return False
+                
+            # Change to output directory
+            original_dir = os.getcwd()
+            os.chdir(output_dir)
+            
+            # Run megadl command
+            logger.info("Starting download with megatools...")
+            result = subprocess.run(['megadl', url], capture_output=True, text=True)
+            
+            # Change back to original directory
+            os.chdir(original_dir)
+            
+            if result.returncode == 0:
+                logger.info("✅ Download completed successfully using megatools!")
+                return True
+            else:
+                logger.error(f"❌ megatools failed: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ megatools error: {e}")
+            return False
+
+    def install_megatools_macos(self):
+        """
+        Attempt to install megatools on macOS using Homebrew
+        """
+        if sys.platform != "darwin":  # Not macOS
+            return False
+            
+        logger.info("🍺 Attempting to install megatools via Homebrew...")
+        try:
+            result = subprocess.run(['brew', 'install', 'megatools'], capture_output=True, text=True)
+            if result.returncode == 0:
+                logger.info("✅ megatools installed successfully!")
+                return True
+            else:
+                logger.error(f"❌ Homebrew installation failed: {result.stderr}")
+                return False
+        except FileNotFoundError:
+            logger.error("❌ Homebrew not found. Please install Homebrew first: https://brew.sh")
+            return False
+
+    def simple_download(self, url, output_dir=None):
+        """
+        Simple download method using megatools or providing instructions
+        
+        Args:
+            url (str): Mega.nz URL
+            output_dir (str): Directory to save the file (optional)
+        
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Parse the URL
+            file_id, decryption_key = self.parse_mega_url(url)
+            
+            if not file_id or not decryption_key:
+                logger.error("Error: Invalid Mega.nz URL format")
+                logger.error("Expected format: https://mega.nz/file/[file_id]#[decryption_key]")
+                return False
+            
+            logger.info(f"File ID: {file_id}")
+            logger.info(f"Decryption Key: {decryption_key[:10]}...")
+            
+            logger.info("Connecting to Mega.nz...")
+            
+            # Set output directory
+            if output_dir:
+                if not os.path.exists(output_dir):
+                    os.makedirs(output_dir)
+                    logger.info(f"Created directory: {output_dir}")
+            else:
+                output_dir = os.getcwd()
+            
+            logger.info(f"Download directory: {output_dir}")
+            
+            # Try method 1: megatools (if available)
+            if shutil.which('megadl'):
+                logger.info("Using megatools (megadl)...")
+                return self.download_with_megatools(url, output_dir)
+            
+            # Try to install megatools on macOS
+            if sys.platform == "darwin":  # macOS
+                if self.install_megatools_macos():
+                    logger.info("🔄 Retrying download...")
+                    return self.download_with_megatools(url, output_dir)
+            
+            # Fallback: provide instructions
+            logger.error("❌ Direct download method not available for Mega.nz encrypted files.")
+            logger.info("📋 To download Mega.nz files, please use one of these methods:")
+            logger.info("Method 1: Install megatools (Recommended)")
+            logger.info("  macOS: brew install megatools")
+            logger.info("  Ubuntu/Debian: sudo apt install megatools")
+            logger.info("  Then run this script again")
+            logger.info("Method 2: Manual download")
+            logger.info(f"  1. Open this URL in your browser: {url}")
+            logger.info("  2. Click download and save to your desired location")
+            logger.info("Method 3: Use megacmd")
+            logger.info("  Download from: https://mega.nz/cmd")
+            logger.info(f"  Then run: mega-get {url}")
+            
+            return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error during download: {e}")
+            return False
 
     def login(self, email=None, password=None):
         if email:

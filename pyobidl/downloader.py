@@ -1,429 +1,248 @@
-import time
+#!/usr/bin/env python3
+"""
+Universal File Downloader
+
+This script downloads files from various platforms including Mega.nz, YouTube, MediaFire, and Google Drive.
+Usage: python downloader.py [url] [output_directory]
+"""
+
 import os
-import re
-import requests
-from . import googledrive
-from . import mediafire
-from .megacli import mega
-from .megacli import megafolder
-from .utils import req_file_size,get_file_size,get_url_file_name,slugify,createID,makeSafeFilename
+import sys
+import argparse
+import logging
+from pathlib import Path
 
-class Downloader(object):
-    def __init__(self,destpath='', mega_email=None, mega_password=None, proxies=None):
-        self.filename = ''
-        self.stoping = False
-        self.destpath = destpath
-        if self.destpath!='':
-            isExist = os.path.exists(self.destpath)
-            if not isExist:
-                os.makedirs(self.destpath)
-        self.id = createID(12)
-        self.url = ''
-        self.progressfunc = None
-        self.args = None
-        self.mega_email = mega_email
-        self.mega_password = mega_password
-        self.proxies = proxies
-        # Cache for Mega session
-        self.mega_session = None
-        
-    def _get_mega_session(self):
-        """Get or create a Mega session"""
-        if self.mega_session is not None:
-            # Return existing session if we have one
-            return self.mega_session
-            
-        # Create Mega instance with options
-        mg_options = {
-            'timeout': 300,  # Increased timeout
-            'proxies': self.proxies  # Pass proxies to Mega
-        }
-        mg = mega.Mega(options=mg_options)
-        
-        # Try to login with max 5 attempts with exponential backoff
-        login_attempts = 0
-        max_login_attempts = 5
-        mdl = None
-        last_error = None
-        
-        while login_attempts < max_login_attempts and mdl is None:
-            try:
-                # Use credentials if provided, otherwise login anonymously
-                if self.mega_email and self.mega_password:
-                    mdl = mg.login(self.mega_email, self.mega_password)
-                else:
-                    mdl = mg.login()
-            except Exception as login_ex:
-                last_error = login_ex
-                login_attempts += 1
-                if login_attempts >= max_login_attempts:
-                    print(f"Failed to login after {max_login_attempts} attempts. Last error: {str(login_ex)}")
-                    raise login_ex
-                    
-                # Exponential backoff wait before retrying (2^attempt seconds)
-                wait_time = 2 ** login_attempts
-                print(f"Login attempt {login_attempts} failed. Retrying in {wait_time} seconds.")
-                time.sleep(wait_time)
-        
-        if mdl is None:
-            print(f"Failed to login to Mega. Error: {str(last_error)}")
-            return None
-            
-        # Cache the session for future use
-        self.mega_session = mdl
-        return mdl
-        
-    def download_info(self,url='',proxies=None):
-        infos = []
-        self.url = url
-        req = None
-        setproxycu = None
-        if proxies:
-            setproxycu = proxies
-        elif self.proxies:
-            setproxycu = self.proxies
-        if '.cu' not in url:
-            setproxycu = None
-        if 'mediafire' in url:
-                try:
-                    url = mediafire.get(url)
-                except:return None
-        elif 'drive.google' in url:
-                try:
-                    info = googledrive.get_info(url)
-                    self.filename = slugify(info['file_name'])
-                    url = info['file_url']
-                except:return None
-        elif 'mega.nz' in url:
-                try:
-                    # Get or create a Mega session
-                    mdl = self._get_mega_session()
-                    if mdl is None:
-                        return None
-                        
-                    try:
-                        info = mdl.get_public_url_info(url)
-                    except Exception as e:
-                        print(f"Error getting URL info: {str(e)}")
-                        # If session expired, clear it and try once more
-                        if "Not logged in" in str(e):
-                            self.mega_session = None
-                            mdl = self._get_mega_session()
-                            if mdl is None:
-                                return None
-                            info = mdl.get_public_url_info(url)
-                        else:
-                            info = None
-                            
-                    if info:
-                        fname = info['name']
-                        fsize = info['size']
-                        infos.append({'fname':fname,'furl':url,'fsize':fsize,'iter':mdl.download_iter_url(url)})
-                        req = 0
-                    else:
-                        mgfiles = megafolder.get_files_from_folder(url)
-                        files = []
-                        for fi in mgfiles:
-                            url = fi['data']['g']
-                            fname = fi['name']
-                            fsize = fi['size']
-                            infos.append({'fname':fname,'furl':url,'fsize':fsize})
-                except Exception as ex:
-                    print(f"Mega download_info error: {str(ex)}")
-                    return None
-        if req is None:
-           req = requests.get(url,allow_redirects=True,stream=True,proxies=setproxycu)
-           fname = get_url_file_name(url,req)
-           fsize = req_file_size(req)
-           infos.append({'fname':fname,'furl':url,'fsize':fsize,'resp':req})
-        return infos
-        
-    def download_url(self,url='',progressfunc=None,args=None,proxies=None):
-        self.url = url
-        self.progressfunc = progressfunc
-        self.args = args
-        req = None
-        setproxycu = None
-        if proxies:
-            setproxycu = proxies
-        elif self.proxies:
-            setproxycu = self.proxies
-        if '.cu' not in url:
-            setproxycu = None
-        if 'mediafire' in url:
-                try:
-                    url = mediafire.get(url)
-                except:return None
-        elif 'drive.google' in url:
-                try:
-                    info = googledrive.get_info(url)
-                    self.filename = slugify(info['file_name'])
-                    url = info['file_url']
-                except:return None
-        elif 'mega.nz' in url:
-                try:
-                    # Get or create a Mega session
-                    mdl = self._get_mega_session()
-                    if mdl is None:
-                        return None
-                        
-                    try:
-                        info = mdl.get_public_url_info(url)
-                    except Exception as e:
-                        print(f"Error getting URL info: {str(e)}")
-                        # If session expired, clear it and try once more
-                        if "Not logged in" in str(e):
-                            self.mega_session = None
-                            mdl = self._get_mega_session()
-                            if mdl is None:
-                                return None
-                            info = mdl.get_public_url_info(url)
-                        else:
-                            info = None
-                            
-                    if info:
-                        output = mdl.download_url(url,dest_path=self.destpath,dest_filename=self.destpath+info['name'],progressfunc=progressfunc,args=args,self_in=self)
-                        if not self.stoping:
-                            return output
-                        return None
-                    else:
-                        mgfiles = megafolder.get_files_from_folder(url)
-                        files = []
-                        for fi in mgfiles:
-                            if self.stoping:break
-                            url = fi['data']['g']
-                            req = requests.get(url,allow_redirects=True,stream=True,proxies=setproxycu)
-                            self.filename = fi['name']
-                            output = self._process_download(url,req,progressfunc=progressfunc,args=args,self_in=self)
-                            files.append(output)
-                        if self.stoping:return None
-                        if len(files>0):
-                            return files
-                    return None
-                except Exception as ex:
-                    print(f"Mega download_url error: {str(ex)}")
-                    return None
-        if req is None:
-           req = requests.get(url,allow_redirects=True,stream=True,proxies=setproxycu)
-        return self._process_download(url,req,progressfunc=progressfunc,args=args)
+from .megacli.mega import Mega
+from .youtube import YoutubeDownloader
+from .mediafire import MediaFireDownloader
+from .googledrive import GoogleDriveDownloader
+from .utils import setup_logging
 
-    def _process_download(self,url,req,progressfunc=None,args=None):
-        if req is None:return None
-        if req.status_code == 200:
-            file_size = req_file_size(req)
-            file_name = get_url_file_name(url,req)
-            if self.filename!='':
-                self.filename = makeSafeFilename(self.filename)
-                file_name = self.filename
+logger = logging.getLogger(__name__)
+
+
+class UniversalDownloader:
+    def __init__(self):
+        self.mega = Mega()
+        self.youtube = YoutubeDownloader()
+        self.mediafire = MediaFireDownloader()
+        self.googledrive = GoogleDriveDownloader()
+
+    def detect_platform(self, url):
+        """
+        Detect which platform the URL belongs to
+        
+        Args:
+            url (str): The URL to analyze
+            
+        Returns:
+            str: Platform name ('mega', 'youtube', 'mediafire', 'googledrive', 'unknown')
+        """
+        url = url.lower().strip()
+        
+        if 'mega.nz' in url or 'mega.co.nz' in url:
+            return 'mega'
+        elif 'youtube.com' in url or 'youtu.be' in url:
+            return 'youtube'
+        elif 'mediafire.com' in url:
+            return 'mediafire'
+        elif 'drive.google.com' in url or 'docs.google.com' in url:
+            return 'googledrive'
+        else:
+            return 'unknown'
+
+    def download(self, url, output_dir=None):
+        """
+        Download file from any supported platform
+        
+        Args:
+            url (str): URL to download from
+            output_dir (str): Directory to save the file (optional)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        platform = self.detect_platform(url)
+        
+        logger.info(f"🔍 Detected platform: {platform}")
+        
+        if platform == 'mega':
+            return self.download_mega(url, output_dir)
+        elif platform == 'youtube':
+            return self.download_youtube(url, output_dir)
+        elif platform == 'mediafire':
+            return self.download_mediafire(url, output_dir)
+        elif platform == 'googledrive':
+            return self.download_googledrive(url, output_dir)
+        else:
+            logger.error(f"❌ Unsupported platform for URL: {url}")
+            logger.info("📋 Supported platforms:")
+            logger.info("  - Mega.nz: https://mega.nz/file/...")
+            logger.info("  - YouTube: https://youtube.com/watch?v=...")
+            logger.info("  - MediaFire: https://mediafire.com/file/...")
+            logger.info("  - Google Drive: https://drive.google.com/file/d/...")
+            return False
+
+    def download_mega(self, url, output_dir=None):
+        """
+        Download file from Mega.nz
+        
+        Args:
+            url (str): Mega.nz URL
+            output_dir (str): Directory to save the file (optional)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            logger.info("🚀 Starting Mega.nz download...")
+            
+            # Use the simple download method from the updated Mega class
+            success = self.mega.simple_download(url, output_dir)
+            
+            if success:
+                logger.info("✅ Mega.nz download completed successfully!")
             else:
-                file_name = makeSafeFilename(file_name)
-                self.filename = file_name
-            file_wr = open(self.destpath+file_name,'wb')
-            chunk_por = 0
-            chunkrandom = 100
-            total = file_size
-            time_start = time.time()
-            time_total = 0
-            size_per_second = 0
-            clock_start = time.time()
-            for chunk in req.iter_content(chunk_size = 1024):
-                    if self.stoping:break
-                    chunk_por += len(chunk)
-                    size_per_second+=len(chunk)
-                    tcurrent = time.time() - time_start
-                    time_total += tcurrent
-                    time_start = time.time()
-                    if time_total>=1:
-                        clock_time = (total - chunk_por) / (size_per_second)
-                        if progressfunc:
-                            progressfunc(self,file_name,chunk_por,total,size_per_second,clock_time,args)
-                        time_total = 0
-                        size_per_second = 0
-                    file_wr.write(chunk)
-            file_wr.close()
-            if not self.stoping:
-                return self.destpath+file_name
-        return None
-
-    def stop(self):self.stoping=True
-    def renove(self):
-        self.download_url(self.url,self.progressfunc,self.args)
-
-class AsyncDownloader(object):
-    def __init__(self,destpath='', mega_email=None, mega_password=None, proxies=None):
-        self.filename = ''
-        self.stoping = False
-        self.destpath = destpath
-        if self.destpath!='':
-            isExist = os.path.exists(self.destpath)
-            if not isExist:
-                os.makedirs(self.destpath)
-        self.id = createID(12)
-        self.url = ''
-        self.progressfunc = None
-        self.args = None
-        self.mega_email = mega_email
-        self.mega_password = mega_password
-        self.proxies = proxies
-        # Cache for Mega session
-        self.mega_session = None
-        
-    async def _get_mega_session(self):
-        """Get or create a Mega session"""
-        if self.mega_session is not None:
-            # Return existing session if we have one
-            return self.mega_session
+                logger.error("❌ Mega.nz download failed!")
+                
+            return success
             
-        # Create Mega instance with options
-        mg_options = {
-            'timeout': 300,  # Increased timeout
-            'proxies': self.proxies  # Pass proxies to Mega
-        }
-        mg = mega.Mega(options=mg_options)
+        except Exception as e:
+            logger.error(f"❌ Error downloading from Mega.nz: {e}")
+            return False
+
+    def download_youtube(self, url, output_dir=None):
+        """
+        Download video from YouTube
         
-        # Try to login with max 5 attempts with exponential backoff
-        login_attempts = 0
-        max_login_attempts = 5
-        mdl = None
-        last_error = None
-        
-        while login_attempts < max_login_attempts and mdl is None:
-            try:
-                # Use credentials if provided, otherwise login anonymously
-                if self.mega_email and self.mega_password:
-                    mdl = mg.login(self.mega_email, self.mega_password)
-                else:
-                    mdl = mg.login()
-            except Exception as login_ex:
-                last_error = login_ex
-                login_attempts += 1
-                if login_attempts >= max_login_attempts:
-                    print(f"Failed to login after {max_login_attempts} attempts. Last error: {str(login_ex)}")
-                    raise login_ex
-                    
-                # Exponential backoff wait before retrying (2^attempt seconds)
-                wait_time = 2 ** login_attempts
-                print(f"Login attempt {login_attempts} failed. Retrying in {wait_time} seconds.")
-                import asyncio
-                await asyncio.sleep(wait_time)
-        
-        if mdl is None:
-            print(f"Failed to login to Mega. Error: {str(last_error)}")
-            return None
+        Args:
+            url (str): YouTube URL
+            output_dir (str): Directory to save the file (optional)
             
-        # Cache the session for future use
-        self.mega_session = mdl
-        return mdl
-
-    async def download_url(self,url='',progressfunc=None,args=None,proxies=None):
-        self.url = url
-        self.progressfunc = progressfunc
-        self.args = args
-        req = None
-        setproxycu = None
-        if proxies:
-            setproxycu = proxies
-        elif self.proxies:
-            setproxycu = self.proxies
-        if '.cu' not in url:
-            setproxycu = None
-        if 'mediafire' in url:
-                try:
-                    url = mediafire.get(url)
-                except:return None
-        elif 'drive.google' in url:
-                try:
-                    info = googledrive.get_info(url)
-                    self.filename = slugify(info['file_name'])
-                    url = info['file_url']
-                except:return None
-        elif 'mega.nz' in url:
-                try:
-                    # Get or create a Mega session
-                    mdl = await self._get_mega_session()
-                    if mdl is None:
-                        return None
-                        
-                    try:
-                        info = mdl.get_public_url_info(url)
-                    except Exception as e:
-                        print(f"Error getting URL info: {str(e)}")
-                        # If session expired, clear it and try once more
-                        if "Not logged in" in str(e):
-                            self.mega_session = None
-                            mdl = await self._get_mega_session()
-                            if mdl is None:
-                                return None
-                            info = mdl.get_public_url_info(url)
-                        else:
-                            info = None
-                            
-                    if info:
-                        output = await mdl.async_download_url(url,dest_path=self.destpath,dest_filename=self.destpath+info['name'],progressfunc=progressfunc,args=args,self_in=self)
-                        if not self.stoping:
-                            return output
-                        return None
-                    else:
-                        mgfiles = await megafolder.get_files_from_folder(url)
-                        files = []
-                        for fi in mgfiles:
-                            if self.stoping:break
-                            url = fi['data']['g']
-                            req = requests.get(url,allow_redirects=True,stream=True,proxies=setproxycu)
-                            self.filename = fi['name']
-                            output = await self._process_download(url,req,progressfunc=progressfunc,args=args,self_in=self)
-                            files.append(output)
-                        if self.stoping:
-                            return None
-                        if len(files>0):
-                            return files
-                    return None
-                except Exception as ex:
-                    print(f"Mega download_url error: {str(ex)}")
-                    return None
-        if req is None:
-           req = requests.get(url,allow_redirects=True,stream=True,proxies=setproxycu)
-        return await self._process_download(url,req,progressfunc=progressfunc,args=args)
-
-    async def _process_download(self,url,req,progressfunc=None,args=None):
-        if req is None:return None
-        if req.status_code == 200:
-            file_size = req_file_size(req)
-            file_name = get_url_file_name(url,req)
-            if self.filename!='':
-                self.filename = makeSafeFilename(self.filename)
-                file_name = self.filename
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            logger.info("🚀 Starting YouTube download...")
+            
+            success = self.youtube.download(url, output_dir)
+            
+            if success:
+                logger.info("✅ YouTube download completed successfully!")
             else:
-                file_name = makeSafeFilename(file_name)
-                self.filename = file_name
-            file_wr = open(self.destpath+file_name,'wb')
-            chunk_por = 0
-            chunkrandom = 100
-            total = file_size
-            time_start = time.time()
-            time_total = 0
-            size_per_second = 0
-            clock_start = time.time()
-            for chunk in req.iter_content(chunk_size = 1024):
-                    if self.stoping:break
-                    chunk_por += len(chunk)
-                    size_per_second+=len(chunk)
-                    tcurrent = time.time() - time_start
-                    time_total += tcurrent
-                    time_start = time.time()
-                    if time_total>=1:
-                        clock_time = (total - chunk_por) / (size_per_second)
-                        if progressfunc:
-                            progressfunc(self,file_name,chunk_por,total,size_per_second,clock_time,args)
-                        time_total = 0
-                        size_per_second = 0
-                    file_wr.write(chunk)
-            file_wr.close()
-            if not self.stoping:
-                return self.destpath+file_name
-        return None
+                logger.error("❌ YouTube download failed!")
+                
+            return success
+            
+        except Exception as e:
+            logger.error(f"❌ Error downloading from YouTube: {e}")
+            return False
 
-    async def stop(self):
-        self.stoping=True
-    async def renove(self):
-        await self.download_url(self.url,self.progressfunc,self.args)
+    def download_mediafire(self, url, output_dir=None):
+        """
+        Download file from MediaFire
+        
+        Args:
+            url (str): MediaFire URL
+            output_dir (str): Directory to save the file (optional)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            logger.info("🚀 Starting MediaFire download...")
+            
+            success = self.mediafire.download(url, output_dir)
+            
+            if success:
+                logger.info("✅ MediaFire download completed successfully!")
+            else:
+                logger.error("❌ MediaFire download failed!")
+                
+            return success
+            
+        except Exception as e:
+            logger.error(f"❌ Error downloading from MediaFire: {e}")
+            return False
+
+    def download_googledrive(self, url, output_dir=None):
+        """
+        Download file from Google Drive
+        
+        Args:
+            url (str): Google Drive URL
+            output_dir (str): Directory to save the file (optional)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            logger.info("🚀 Starting Google Drive download...")
+            
+            success = self.googledrive.download(url, output_dir)
+            
+            if success:
+                logger.info("✅ Google Drive download completed successfully!")
+            else:
+                logger.error("❌ Google Drive download failed!")
+                
+            return success
+            
+        except Exception as e:
+            logger.error(f"❌ Error downloading from Google Drive: {e}")
+            return False
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Download files from various platforms (Mega.nz, YouTube, MediaFire, Google Drive)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python downloader.py "https://mega.nz/file/B3kg2ZqC#aEOZ5e6OJYV-H8aKFY8nWhX-wxwZQL21hlWV1Sj9jg4"
+  python downloader.py "https://youtube.com/watch?v=dQw4w9WgXcQ" ./downloads
+  python downloader.py "https://mediafire.com/file/abc123/example.zip"
+  python downloader.py "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+        """
+    )
+    
+    parser.add_argument(
+        'url',
+        help='URL to download from (supports Mega.nz, YouTube, MediaFire, Google Drive)'
+    )
+    
+    parser.add_argument(
+        'output_dir',
+        nargs='?',
+        default=None,
+        help='Output directory (optional, defaults to current directory)'
+    )
+    
+    parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help='Enable verbose logging'
+    )
+    
+    args = parser.parse_args()
+    
+    # Setup logging
+    setup_logging(verbose=args.verbose)
+    
+    logger.info("🚀 Universal File Downloader")
+    logger.info("=" * 50)
+    logger.info(f"URL: {args.url}")
+    
+    downloader = UniversalDownloader()
+    success = downloader.download(args.url, args.output_dir)
+    
+    if success:
+        logger.info("\n✅ Download completed successfully!")
+        sys.exit(0)
+    else:
+        logger.error("\n❌ Download failed!")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
