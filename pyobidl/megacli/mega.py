@@ -64,10 +64,14 @@ class Mega:
         """
         try:
             # Remove any extra characters or spaces
+            original_url = url
             url = url.strip()
+            logger.info(f"🔍 parse_mega_url: Original URL: '{original_url}'")
+            logger.info(f"🔍 parse_mega_url: Cleaned URL: '{url}'")
             
             # Check if it's a valid Mega URL
             if not url.startswith('https://mega.nz/file/'):
+                logger.error(f"🔍 parse_mega_url: Invalid URL format - doesn't start with https://mega.nz/file/")
                 return None, None
             
             # Extract the part after /file/
@@ -89,6 +93,10 @@ class Mega:
         Download using megatools (megadl command)
         """
         try:
+            # Clean the URL to remove any leading/trailing whitespace
+            url = url.strip()
+            logger.info(f"🔍 download_with_megatools: Cleaned URL: '{url}'")
+            
             # Check if megatools is available
             if not shutil.which('megadl'):
                 logger.error("megatools (megadl) not found")
@@ -138,8 +146,21 @@ class Mega:
                 logger.info(f"🔍 download_with_megatools: Files in output dir from original location: {files_final}")
             
             if result.returncode == 0:
-                logger.info("✅ Download completed successfully using megatools!")
-                return True
+                # Check if stderr contains warnings about invalid links
+                if result.stderr and "Skipping invalid Mega download link" in result.stderr:
+                    logger.error(f"❌ megatools rejected URL as invalid: {result.stderr}")
+                    return False
+                    
+                # Check if stdout indicates successful download
+                if result.stdout and "Downloaded" in result.stdout:
+                    logger.info("✅ Download completed successfully using megatools!")
+                    return True
+                elif not files_after:
+                    logger.error("❌ megatools completed but no files were downloaded")
+                    return False
+                else:
+                    logger.info("✅ Download completed successfully using megatools!")
+                    return True
             else:
                 logger.error(f"❌ megatools failed: {result.stderr}")
                 return False
