@@ -64,14 +64,10 @@ class Mega:
         """
         try:
             # Remove any extra characters or spaces
-            original_url = url
             url = url.strip()
-            logger.info(f"🔍 parse_mega_url: Original URL: '{original_url}'")
-            logger.info(f"🔍 parse_mega_url: Cleaned URL: '{url}'")
             
             # Check if it's a valid Mega URL
             if not url.startswith('https://mega.nz/file/'):
-                logger.error(f"🔍 parse_mega_url: Invalid URL format - doesn't start with https://mega.nz/file/")
                 return None, None
             
             # Extract the part after /file/
@@ -95,7 +91,6 @@ class Mega:
         try:
             # Clean the URL to remove any leading/trailing whitespace
             url = url.strip()
-            logger.info(f"🔍 download_with_megatools: Cleaned URL: '{url}'")
             
             # Check if megatools is available
             if not shutil.which('megadl'):
