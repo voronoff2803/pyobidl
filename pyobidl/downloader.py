@@ -154,24 +154,91 @@ class Downloader:
     def _download_mega(self, url):
         """Download from Mega using new recreated module"""
         try:
+            logger.info(f"🔍 _download_mega: Starting download for URL: {url}")
+            logger.info(f"🔍 _download_mega: Destination path: {self.destpath}")
+            logger.info(f"🔍 _download_mega: Stopping flag: {self.stoping}")
+            
+            # Check if destination exists before download
+            if not os.path.exists(self.destpath):
+                logger.error(f"❌ _download_mega: Destination path does not exist: {self.destpath}")
+                raise Exception(f"Destination path does not exist: {self.destpath}")
+                
+            # List files before download
+            files_before = []
+            if os.path.exists(self.destpath):
+                files_before = [f for f in os.listdir(self.destpath) 
+                              if os.path.isfile(os.path.join(self.destpath, f))]
+                logger.info(f"🔍 _download_mega: Files before download: {files_before}")
+            
             # Use the new simple download method
+            logger.info(f"🔍 _download_mega: Calling mega.simple_download()")
             success = self.mega.simple_download(url, self.destpath)
+            logger.info(f"🔍 _download_mega: simple_download returned: {success}")
             
-            if success and not self.stoping:
-                # Find the downloaded file
-                if os.path.exists(self.destpath):
-                    files = [f for f in os.listdir(self.destpath) 
-                           if os.path.isfile(os.path.join(self.destpath, f))]
-                    if files:
-                        # Return the most recently modified file
-                        latest_file = max(files, key=lambda f: os.path.getmtime(os.path.join(self.destpath, f)))
-                        return os.path.join(self.destpath, latest_file)
+            if not success:
+                logger.error(f"❌ _download_mega: simple_download failed!")
+                raise Exception("simple_download returned False")
+            
+            if self.stoping:
+                logger.error(f"❌ _download_mega: Download was stopped!")
+                raise Exception("Download was stopped")
+                
+            # Check if destination still exists after download
+            if not os.path.exists(self.destpath):
+                logger.error(f"❌ _download_mega: Destination path disappeared after download: {self.destpath}")
+                raise Exception(f"Destination path disappeared: {self.destpath}")
+                
+            # Find the downloaded file
+            files_after = [f for f in os.listdir(self.destpath) 
+                          if os.path.isfile(os.path.join(self.destpath, f))]
+            logger.info(f"🔍 _download_mega: Files after download: {files_after}")
+            
+            if not files_after:
+                logger.error(f"❌ _download_mega: No files found in destination after download!")
+                raise Exception("No files found in destination after download")
+                
+            # Return the most recently modified file
+            try:
+                latest_file = max(files_after, key=lambda f: os.path.getmtime(os.path.join(self.destpath, f)))
+                full_path = os.path.join(self.destpath, latest_file)
+                logger.info(f"✅ _download_mega: Latest file found: {latest_file}")
+                logger.info(f"✅ _download_mega: Full path: {full_path}")
+                
+                # Verify file exists and has size
+                if not os.path.exists(full_path):
+                    logger.error(f"❌ _download_mega: Latest file path does not exist: {full_path}")
+                    raise Exception(f"Latest file path does not exist: {full_path}")
+                    
+                file_size = os.path.getsize(full_path)
+                logger.info(f"✅ _download_mega: File size: {file_size} bytes")
+                
+                if file_size == 0:
+                    logger.error(f"❌ _download_mega: File has zero size!")
+                    raise Exception("Downloaded file has zero size")
+                
+                logger.info(f"✅ _download_mega: Successfully returning: {full_path}")
+                return full_path
+                
+            except Exception as file_error:
+                logger.error(f"❌ _download_mega: Error processing files: {str(file_error)}")
+                raise Exception(f"Error processing downloaded files: {str(file_error)}")
                         
-            return None
-            
         except Exception as e:
-            logger.error(f"Mega download error: {str(e)}")
-            return None
+            logger.error(f"❌ _download_mega: Exception occurred: {str(e)}")
+            logger.error(f"❌ _download_mega: Exception type: {type(e).__name__}")
+            
+            # Additional debugging info
+            try:
+                logger.error(f"🔍 _download_mega: Current destpath exists: {os.path.exists(self.destpath)}")
+                if os.path.exists(self.destpath):
+                    current_files = os.listdir(self.destpath)
+                    logger.error(f"🔍 _download_mega: Current files in destpath: {current_files}")
+            except Exception as debug_error:
+                logger.error(f"🔍 _download_mega: Could not get debug info: {str(debug_error)}")
+            
+            # Re-raise the exception instead of returning None for debugging
+            raise Exception(f"_download_mega failed: {str(e)}")
+            # return None
     
     def _download_mediafire(self, url):
         """Download from MediaFire"""
